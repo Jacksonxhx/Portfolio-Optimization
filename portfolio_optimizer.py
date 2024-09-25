@@ -22,7 +22,7 @@ class PortfolioOptimizer:
         # make sure the sum of b_i == 1
         self.linear_constraint = LinearConstraint(np.ones(self.m), 1, 1)
 
-    def ftl_objective(self, b: np.ndarray, X: np.ndarray) -> Union[float, np.inf]:
+    def ftl_objective(self, b: np.ndarray, X: np.ndarray):
         """
         Calculate the log sum BCRP
 

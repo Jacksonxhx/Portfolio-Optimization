@@ -1,3 +1,4 @@
+import pprint
 import time
 import pandas as pd
 from ib_insync import MarketOrder
@@ -17,34 +18,39 @@ class StrategyRunner:
         self.price_relatives = None
 
     def initialize_prices(self):
-        # 获取历史价格数据
+        # obtain historical price for each ticker
         price_data = {}
         for contract in self.contracts:
             df = self.data_fetcher.fetch_historical_data(contract)
             price_data[contract.symbol] = df
-        # 合并为 DataFrame
+        # make a historical price dataframe
         self.prices = pd.DataFrame(price_data)
-        # 计算价格相对变化
+        # calculate the historical price change x_t = P_t/P_(t-1)
         self.price_relatives = self.prices.pct_change().fillna(0) + 1
 
     def run(self):
+        '''
+        Implement FTL algorithm b_t = argmax(b∈Δm) ∑(j=1) to (t-1) ln(b⊤x_j)
+        '''
         self.initialize_prices()
+        # days
         T = len(self.price_relatives)
+        # relative prices
         X = self.price_relatives.values
 
         for t in range(1, T):
-            # 获取历史数据
+            # relative prices from 0 to t - 1
             X_t = X[:t]
             b_init = self.portfolio_manager.get_latest_weights()
-            # 优化投资组合
+            # use previous price to optimize to make sure the b_t is the best option in time t
             b_t = self.optimizer.optimize(X_t, b_init)
-            # 更新投资组合权重
+            # update weights
             self.portfolio_manager.update_portfolio(b_t)
-            # 计算本期财富
+            # calculate the current wealth use current price at time t and update wealth: S_t = S_(t-1) x b_t⊤x_t
             x_t = X[t]
             self.portfolio_manager.update_wealth(b_t, x_t)
 
-        # 可视化结果
+        # plot
         self.plot_results()
 
     def plot_results(self):
@@ -52,7 +58,7 @@ class StrategyRunner:
         portfolio_df = self.portfolio_manager.get_portfolio_weights_df(index)
         wealth_series = self.portfolio_manager.get_wealth_series(index)
 
-        # 绘制财富曲线
+        # plot wealth
         plt.figure(figsize=(10, 6))
         plt.plot(wealth_series)
         plt.title('Wealth Over Time Using FTL Algorithm')
@@ -61,7 +67,7 @@ class StrategyRunner:
         plt.grid(True)
         plt.show()
 
-        # 绘制投资组合权重
+        # plot weights
         portfolio_df.plot(kind='line', figsize=(10, 6))
         plt.title('Portfolio Weights Over Time')
         plt.xlabel('Date')
@@ -71,39 +77,44 @@ class StrategyRunner:
         plt.show()
 
     def execute_trades(self):
-        # 获取最新价格
-        current_prices = self.data_fetcher.get_current_prices(self.contracts)
+        # obtain the current market price
+        current_prices: dict[str, float] = self.data_fetcher.get_current_prices(self.contracts)
         current_prices_series = pd.Series(current_prices)
 
-        # 更新价格相对变化
-        last_close_prices = self.prices.iloc[-1]
+        # retrieve the current relative price
+        last_close_prices = self.prices.iloc[-1]    # price obtain by self.initialize_prices()
         x_t = (current_prices_series / last_close_prices).values
 
-        # 更新价格数据
+        # update price and relative price dict
         self.prices.loc[pd.Timestamp.now()] = current_prices_series
         self.price_relatives.loc[pd.Timestamp.now()] = x_t
 
-        # 更新 FTL 算法
+        # update FTL algo with the current data
         X_t = self.price_relatives.values
         b_init = self.portfolio_manager.get_latest_weights()
         b_t = self.optimizer.optimize(X_t, b_init)
         self.portfolio_manager.update_portfolio(b_t)
 
-        # 获取账户信息
+        # live trading part
         self.ib.reqPositions()
-        self.ib.sleep(1)
+        self.ib.sleep(2)
+
+        # obtain the current positions
         positions = {pos.contract.symbol: pos.position for pos in self.ib.positions()}
+
+        # get net asset
         account_values = self.ib.accountValues()
         net_liquidation = float([v for v in account_values if v.tag == 'NetLiquidation' and v.currency == 'USD'][0].value)
 
-        # 计算目标持仓并执行交易
-        target_positions_value = b_t * net_liquidation
+        # live trading
+        target_positions_value = b_t * net_liquidation  # get weights for each ticker and we get how much money needed to be spent on each ticker
         target_positions_qty = {}
         for symbol, target_value in zip(self.symbols, target_positions_value):
             price = current_prices[symbol]
             qty = int(target_value / price)
             target_positions_qty[symbol] = qty
 
+        # do re-balancing
         self.rebalance_portfolio(target_positions_qty, positions)
 
     def rebalance_portfolio(self, target_positions_qty, current_positions):
@@ -111,25 +122,43 @@ class StrategyRunner:
             symbol = contract.symbol
             target_qty = target_positions_qty.get(symbol, 0)
             current_qty = current_positions.get(symbol, 0)
+
+            # calculate how many needed to be brought
             order_qty = target_qty - current_qty
+
             if order_qty == 0:
-                continue  # 不需要交易
+                # no need to trade
+                continue
             elif order_qty > 0:
-                # 生成买入订单
+                # buy
                 order = MarketOrder('BUY', order_qty)
             else:
-                # 生成卖出订单
-                order = MarketOrder('SELL', -order_qty)
-            # 下达订单
-            trade = self.ib.placeOrder(contract, order)
-            self.ib.sleep(1)  # 等待订单处理
+                # sell, no short
+                sell_qty = min(-order_qty, current_qty)
+                if sell_qty > 0:
+                    order = MarketOrder('SELL', sell_qty)
+                else:
+                    continue
+
+            # make the order
+            self.ib.placeOrder(contract, order)
+            self.ib.sleep(2)
 
     def run_live(self, interval=86400):
+        """
+        Run the algorithm in daily
+        TODO:
+            need to consider when to buy within a day, is it at the end or at the beginning?
+            it's possible that the price fluctuation within the day might lead to better
+            performance and improve the return rate.
+
+        :param interval: int
+        """
         while True:
             try:
                 self.execute_trades()
-                # 等待下一个周期
+                # wait for a day
                 time.sleep(interval)
             except Exception as e:
                 print(f"An error occurred: {e}")
-                time.sleep(60)  # 出现错误时等待一段时间
+                time.sleep(60)

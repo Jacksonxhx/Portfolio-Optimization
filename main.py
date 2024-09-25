@@ -6,7 +6,7 @@ from portfolio_manager import PortfolioManager
 from portfolio_optimizer import PortfolioOptimizer
 from strategy import StrategyRunner
 
-'''Credentials'''
+'''Credentials, the market pools'''
 symbols = [
     'AAPL', 'MSFT', 'GOOGL', 'META'
 ]

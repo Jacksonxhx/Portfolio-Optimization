@@ -42,12 +42,12 @@ class DataFetcher:
         Retrieve the daily close price for each ticker
 
         :param contracts: List[Stock]
-        :return:
+        :return: Dict[str, float]
         """
         market_data = {}
 
         for contract in contracts:
-            # get real time data for each ticker
+            # get real time data for each ticker， start the data feed
             self.ib.reqMktData(contract, '', False, False)
 
         # wait for data updating
