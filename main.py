@@ -1,10 +1,10 @@
 from ib_insync import Stock
 
-from data_fetcher import DataFetcher
+from Follow_The_Winner.data_fetcher import DataFetcher
 from ib_connector import IBConnection
-from portfolio_manager import PortfolioManager
-from portfolio_optimizer import PortfolioOptimizer
-from strategy import StrategyRunner
+from Follow_The_Winner.portfolio_manager import PortfolioManager
+from Follow_The_Winner.portfolio_optimizer import PortfolioOptimizer
+from Follow_The_Winner.strategy import StrategyRunner
 
 '''Credentials, the market pools'''
 symbols = [
@@ -36,7 +36,6 @@ def main():
 
     # run
     strategy_runner.run()
-
     # Run daily
     strategy_runner.run_live(interval=86400)
 
