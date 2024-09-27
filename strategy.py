@@ -4,9 +4,13 @@ import pandas as pd
 from ib_insync import MarketOrder
 from matplotlib import pyplot as plt
 
+'''
+This class is the main strategy for FTW(Follow the leader) and FTL(PAMR)
+'''
+
 
 class StrategyRunner:
-    def __init__(self, ib_connection, data_fetcher, optimizer, portfolio_manager, contracts, symbols):
+    def __init__(self, ib_connection, data_fetcher, optimizer, portfolio_manager, contracts, symbols, name):
         self.ib_connection = ib_connection
         self.ib = ib_connection.get_ib()
         self.data_fetcher = data_fetcher
@@ -16,6 +20,7 @@ class StrategyRunner:
         self.symbols = symbols
         self.prices = None
         self.price_relatives = None
+        self.name = name
 
     def initialize_prices(self):
         # obtain historical price for each ticker
@@ -28,7 +33,7 @@ class StrategyRunner:
         # calculate the historical price change x_t = P_t/P_(t-1)
         self.price_relatives = self.prices.pct_change().fillna(0) + 1
 
-    def run(self):
+    def run_ftw(self):
         '''
         Implement FTL algorithm b_t = argmax(b∈Δm) ∑(j=1) to (t-1) ln(b⊤x_j)
         '''
@@ -53,28 +58,53 @@ class StrategyRunner:
         # plot
         self.plot_results()
 
-    def plot_results(self):
-        index = self.price_relatives.index[:len(self.portfolio_manager.wealth)]
-        portfolio_df = self.portfolio_manager.get_portfolio_weights_df(index)
-        wealth_series = self.portfolio_manager.get_wealth_series(index)
+    def run_ftl(self):
+        """
+        Implement PAMR algorithm
+        """
+        self.initialize_prices()
+        # days
+        T = len(self.price_relatives)
+        # relative prices
+        X = self.price_relatives.values
 
-        # plot wealth
+        for t in range(1, T):
+            # Get current price relatives
+            x_t = X[t]
+            # Update portfolio weights using PAMR
+            b_t = self.optimizer.optimize(x_t)
+            # Update portfolio and wealth
+            self.portfolio_manager.update_portfolio(b_t)
+            self.portfolio_manager.update_wealth(b_t, x_t)
+
+        # Plot results
+        self.plot_results()
+
+    def plot_results(self):
+        '''
+        Currently support plot change in total wealth over time and wights over time
+        '''
+        index = self.price_relatives.index[:len(self.portfolio_manager.wealth)]
+        # portfolio_df = self.portfolio_manager.get_portfolio_weights_df(index)
+        wealth_series = self.portfolio_manager.get_wealth_series(index)
+        pprint.pprint(wealth_series)
+        # plot wealth over time
         plt.figure(figsize=(10, 6))
         plt.plot(wealth_series)
-        plt.title('Wealth Over Time Using FTL Algorithm')
+        plt.title(f'Wealth Over Time Using {self.name} Algorithm')
         plt.xlabel('Date')
         plt.ylabel('Wealth')
         plt.grid(True)
         plt.show()
 
         # plot weights
-        portfolio_df.plot(kind='line', figsize=(10, 6))
-        plt.title('Portfolio Weights Over Time')
-        plt.xlabel('Date')
-        plt.ylabel('Weight')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
+        # portfolio_df.plot(kind='line', figsize=(10, 6))
+        # plt.title('Portfolio Weights Over Time')
+        # plt.xlabel('Date')
+        # plt.ylabel('Weight')
+        # plt.legend()
+        # plt.grid(True)
+        # plt.show()
 
     def execute_trades(self):
         # obtain the current market price

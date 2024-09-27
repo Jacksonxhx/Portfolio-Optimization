@@ -1,5 +1,4 @@
-from typing import List, Union
-
+from typing import List
 import numpy as np
 from scipy.optimize import minimize, Bounds, LinearConstraint
 
@@ -8,7 +7,7 @@ This class is aiming at optimize the FTL algorithm
 '''
 
 
-class PortfolioOptimizer:
+class FTWPortfolioOptimizer:
     def __init__(self, symbols: List[str]):
         """
         Initialize a optimizer

@@ -1,6 +1,10 @@
 import numpy as np
 import pandas as pd
 
+'''
+This class is used to manage the portfolio of wealth and return and weights on each position
+'''
+
 
 class PortfolioManager:
     def __init__(self, symbols):
@@ -8,8 +12,8 @@ class PortfolioManager:
         self.m = len(symbols)
         # initialize weights to equal weights of 1/m
         self.portfolio_weights = [np.ones(self.m) / self.m]
-        # the total wealth at each time
-        self.wealth = [1.0]
+        # the total wealth at each time, assume we have 1m
+        self.wealth = [1000000.0]
 
     def update_portfolio(self, b_t: np.ndarray):
         self.portfolio_weights.append(b_t)
